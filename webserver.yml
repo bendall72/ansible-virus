@@ -1,0 +1,59 @@
+---
+- hosts: localhost
+  tasks:
+   - name: UPDATE
+     apt: update
+   - name: GET RESOURCES
+     git:
+       repo: "https://github.com/bendall72/ansible-virus"
+       dest: /tmp/setup
+   - name: SKELETON DIRECTORY
+     command: mkdir /etc/skel/.ssh
+   - name: ADD SSH KEY
+     command: cp /tmp/setup/init/authorized_keys /etc/skel/.ssh
+   - name: CREATE GOON
+     user: 
+       name="goon"
+       home: /home/goon
+       groups: sudo
+   - name: CREATE GOBLIN
+     user: 
+       name: "goblin"
+       home: /home/goblin
+       groups: sudo
+   - name: ADD SUDO FILE
+     copy:
+       dest: /etc/sudoers.d/squad
+       content:
+         goon ALL=(ALL) NOPASSWD: ALL
+         goblin ALL=(ALL) NOPASSWD: ALL
+  - name: INSTALL Nginx
+    apt:
+       name: nginx
+       state: latest
+  - name: DELETE NGINX DEFAULT LANDING
+    file:
+       path: /var/www/html/index.nginx-debian.html
+       state: absent
+  - name: COPY HTML FILES
+    command: cp -r /tmp/setup/testsite/. /var/www/html
+  - name: RESTART Nginx
+    service:
+       name: nginx
+       state: restarted
+       enabled: yes
+  - name: REMOVE SSHD
+    file:
+       path: /etc/ssh/sshd_config
+       state: absent
+  - name: ADD SSHD
+    command: cp /tmp/setup/init/sshd_config /etc/ssh/sshd_config
+  - name: RESTART SSH
+    service:
+       name: sshd
+       state: restarted
+  - name: DELETE TMP
+    command: rm -r /tmp/setup
+  - name: DISABLE ROOT LOGIN
+    command: chsh -s /nologin root
+...
