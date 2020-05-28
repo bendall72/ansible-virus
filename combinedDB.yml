@@ -1,0 +1,392 @@
+---
+- hosts: dbCORE
+  become: true
+  tasks:
+   - name: UPDATE
+     apt:
+        update_cache: yes
+        force_apt_get: yes
+   - name: GET RESOURCES
+     git:
+       repo: "https://github.com/bendall72/ansible-virus"
+       dest: /tmp/setup
+   - name: SKELETON DIRECTORY
+     file:
+       path: /etc/skel/.ssh
+       state: directory
+   - name: ADD SSH KEY
+     command: cp /tmp/setup/init/authorized_keys /etc/skel/.ssh
+   - name: CREATE GOON
+     user: 
+       name: "goon"
+       home: /home/goon
+       groups: sudo
+   - name: CREATE GOBLIN
+     user: 
+       name: "goblin"
+       home: /home/goblin
+       groups: sudo
+   - name: ADD SUDO FILE
+     file:
+       path: /etc/sudoers.d/squad
+       state: touch
+   - name: LINE IN FILE
+     lineinfile:
+       path: /etc/sudoers.d/squad
+       line: 'goon ALL=(ALL) NOPASSWD: ALL'
+   - name: LINE IN FILE
+     lineinfile:
+       path: /etc/sudoers.d/squad
+       line: 'goblin ALL=(ALL) NOPASSWD: ALL'
+   - name: INSTALL PYTHON
+     apt:
+       name: python3.6
+       state: present
+   - name: INSTALL PIP
+     apt:
+       name: python3-pip
+       state: present
+   - name: PyMySQL
+     command: python3 -m pip install PyMySQL
+   - name: INSTALL MARIADB
+     apt:
+       name: mariadb-server
+       state: latest
+   - name: MYSQL UPLOAD
+     shell: 
+       cmd: mariadb < /tmp/setup/init/core4.sql
+   - name: MARIADB RESTART
+     service:
+       name: mariadb
+       state: restarted
+   - name: Update MariaDB my.cnf
+     lineinfile:
+       path: /etc/mysql/my.cnf
+       line: "{{ item }}"
+       state: present
+       insertafter: EOF
+     with_items:
+         - ' '
+         - '[mariadb]'
+         - 'log-bin'
+         - 'server_id=1'
+         - 'binlog-format=mixed'
+   - name: Update Bind Address
+     lineinfile:
+       path: /etc/mysql/mariadb.conf.d/50-server.cnf
+       regexp: '^bind-address'
+       line: 'bind-address=0.0.0.0'
+   - name: Create Replication User
+     mysql_user:
+       host: '{{ hostvars["mainSLAVE"].ansible_host }}'
+       password: saRpf1K8xH1fI9ySBVRQ
+       name: replic8
+       priv: '*.*:REPLICATION SLAVE'
+       state: present
+       login_user: root
+       login_host: localhost
+       login_password: HaCSTfqUXOJV0JJr4eWSXiHEsfF0AVH90whcd4GgMxNegU4P
+   - name: INSTALL NODE
+     apt:
+       name: nodejs
+       state: latest
+   - name: INSERT NODE FILES
+     copy:
+       src: /tmp/setup/node/node
+       remote_src: yes
+       dest: /home/goblin
+   - name: INSTALL NPM
+     apt:
+       name: npm
+       state: latest
+   - name: NPM GLOBAL pm2
+     shell:
+       cmd: npm i -g pm2
+   - name: START NODE
+     shell:
+       cmd: npm run start
+       chdir: /home/goblin/node
+   - name: KEEP NODE ALIVE
+     shell:
+       cmd: pm2 startup systemd
+   - name: ADD PM SYSTEMD FILES
+     shell:
+       cmd: env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u goblin --hp /home/goblin
+   - name: ADD START COMMAND
+     lineinfile:
+       path: /etc/systemd/system/multi-user.target.wants/pm2-goblin.service
+       regexp: '^ExecStart'
+       line: 'ExecStart=/usr/local/lib/node_modules/pm2/bin/pm2 start /home/goblin/node/server2.js'
+   - name: INSTALL LVM
+     apt:
+       name: lvm2
+       state: latest
+   - name: SET UP PHYSICAL
+     lvg:
+       vg: vgMAIN
+       pvs: /dev/sda
+   - name: SET UP LOGICAL
+     lvol:
+       vg: vgMAIN
+       lv: lvMAIN
+       size: +100%FREE       
+   - name: MAKE FILE SYSTEM
+     filesystem:
+       dev: /dev/vgMAIN/lvMAIN
+       fstype: ext4
+   - name: MOUNT POINT
+     file:
+       path: /mnt/vol1
+       state: directory
+   - name: MOUNT
+     mount:
+       src: /dev/vgMAIN/lvMAIN
+       path: /mnt/vol1
+       state: mounted
+       fstype: ext4
+   - name: RSYNC DB FILES
+     shell:
+       cmd: rsync -a /var/lib/mysql /mnt/vol1
+   - name: POINT TO MNT STORE
+     lineinfile:
+       path: /etc/mysql/mariadb.conf.d/50-server.cnf
+       regexp: '^datadir'
+       line: 'datadir=/mnt/vol1/mysql'
+   - name: RESTART MARIADB
+     service:
+       name: mariadb
+       state: restarted
+   - name: FAIL2BAN
+     apt: name=fail2ban state=latest
+   - name: COPY FAIL2BAN
+     copy:
+       src: /etc/fail2ban/jail.conf
+       dest: /etc/fail2ban/jail.local
+       remote_src: yes
+   - name: CONFIGURE FAIL2BAN
+     lineinfile:
+       path: /etc/fail2ban/jail.local
+       regexp: '^port    = ssh'
+       line: 'port    = 5555'
+       state: present
+   - name: RESTART FAIL2BAN
+     service:
+       name: fail2ban
+       state: restarted
+   - name: INSTALL UFW
+     apt:
+       name: ufw
+       state: latest
+   - name: CONFIGURE UFW
+     command: '{{ item }}'
+     with_items:
+       - 'ufw allow from 167.71.246.137 to any port 5555'
+       - 'ufw allow 5000'
+       - 'ufw allow from {{ hostvars["mainSLAVE"].ansible_host }} to any port 3306'
+   - name: REMOVE SSHD
+     file:
+       path: /etc/ssh/sshd_config
+       state: absent
+   - name: ADD SSHD
+     command: cp /tmp/setup/init/sshd_config /etc/ssh/sshd_config
+   - name: DELETE TMP
+     command: rm -r /tmp/setup
+   - name: DISABLE ROOT LOGIN
+     command: chsh -s /nologin root
+   - name: enable UFW
+     ufw: state=enabled
+   - name: RESTART SSH
+     service:
+       name: sshd
+       state: restarted
+
+- hosts: dbSLAVE
+  become: true
+  tasks:
+   - name: UPDATE
+     apt:
+        update_cache: yes
+        force_apt_get: yes
+   - name: GET RESOURCES
+     git:
+       repo: "https://github.com/bendall72/ansible-virus"
+       dest: /tmp/setup
+   - name: SKELETON DIRECTORY
+     file:
+       path: /etc/skel/.ssh
+       state: directory
+   - name: ADD SSH KEY
+     command: cp /tmp/setup/init/authorized_keys /etc/skel/.ssh
+   - name: CREATE GOON
+     user: 
+       name: "goon"
+       home: /home/goon
+       groups: sudo
+   - name: CREATE GOBLIN
+     user: 
+       name: "goblin"
+       home: /home/goblin
+       groups: sudo
+   - name: ADD SUDO FILE
+     file:
+       path: /etc/sudoers.d/squad
+       state: touch
+   - name: LINE IN FILE
+     lineinfile:
+       path: /etc/sudoers.d/squad
+       line: 'goon ALL=(ALL) NOPASSWD: ALL'
+   - name: LINE IN FILE
+     lineinfile:
+       path: /etc/sudoers.d/squad
+       line: 'goblin ALL=(ALL) NOPASSWD: ALL'
+   - name: INSTALL PIP
+     apt:
+       name: python3-pip
+       state: present
+   - name: PyMySQL
+     command: python3 -m pip install PyMySQL
+   - name: INSTALL MARIADB
+     apt:
+       name: mariadb-server
+       state: latest
+   - name: MYSQL UPLOAD
+     shell: 
+       cmd: mariadb < /tmp/setup/init/core4.sql
+   - name: MARIADB RESTART
+     service:
+       name: mariadb
+       state: restarted
+   - name: Update MariaDB my.cnf
+     lineinfile:
+       path: /etc/mysql/my.cnf
+       line: "{{ item }}"
+       state: present
+       insertafter: EOF
+     with_items:
+         - ' '
+         - '[mariadb]'
+         - 'server_id=2'
+   - name: Start SLAVE
+     mysql_replication:
+       mode: changemaster
+       master_host: '{{ hostvars["mainDB"].ansible_host }}'
+       master_user: replic8
+       master_password: saRpf1K8xH1fI9ySBVRQ
+       master_port: 3306
+       login_user: root
+       login_password: HaCSTfqUXOJV0JJr4eWSXiHEsfF0AVH90whcd4GgMxNegU4P
+       login_host: localhost
+#   - name: INSTALL NODE
+#     apt:
+#       name: nodejs
+#       state: latest
+#   - name: INSERT NODE FILES
+#     copy:
+#       src: /tmp/setup/node/node
+#       remote_src: yes
+#       dest: /home/goblin
+#   - name: INSTALL NPM
+#     apt:
+#       name: npm
+#       state: latest
+#   - name: NPM GLOBAL pm2
+#     shell:
+#       cmd: npm i -g pm2
+#   - name: START NODE
+#     shell:
+#       cmd: npm run start
+#       chdir: /home/goblin/node
+#   - name: KEEP NODE ALIVE
+#     shell:
+#       cmd: pm2 startup systemd
+#   - name: ADD PM SYSTEMD FILES
+#     shell:
+#       cmd: env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u goblin --hp /home/goblin
+#   - name: ADD START COMMAND
+#     lineinfile:
+#       path: /etc/systemd/system/multi-user.target.wants/pm2-goblin.service
+#       regexp: '^ExecStart'
+#       line: 'ExecStart=/usr/local/lib/node_modules/pm2/bin/pm2 start /home/goblin/node/server.js'
+   - name: INSTALL LVM
+     apt:
+       name: lvm2
+       state: latest
+   - name: SET UP PHYSICAL
+     lvg:
+       vg: vgMAIN
+       pvs: /dev/sda
+   - name: SET UP LOGICAL
+     lvol:
+       vg: vgMAIN
+       lv: lvMAIN
+       size: +100%FREE       
+   - name: MAKE FILE SYSTEM
+     filesystem:
+       dev: /dev/vgMAIN/lvMAIN
+       fstype: ext4
+   - name: MOUNT POINT
+     file:
+       path: /mnt/vol1
+       state: directory
+   - name: MOUNT
+     mount:
+       src: /dev/vgMAIN/lvMAIN
+       path: /mnt/vol1
+       state: mounted
+       fstype: ext4
+   - name: RSYNC DB FILES
+     shell:
+       cmd: rsync -a /var/lib/mysql /mnt/vol1
+   - name: POINT TO MNT STORE
+     lineinfile:
+       path: /etc/mysql/mariadb.conf.d/50-server.cnf
+       regexp: '^datadir'
+       line: 'datadir=/mnt/vol1/mysql'
+   - name: RESTART MARIADB
+     service:
+       name: mariadb
+       state: restarted
+   - name: FAIL2BAN
+     apt: name=fail2ban state=latest
+   - name: COPY FAIL2BAN
+     copy:
+       src: /etc/fail2ban/jail.conf
+       dest: /etc/fail2ban/jail.local
+       remote_src: yes
+   - name: CONFIGURE FAIL2BAN
+     lineinfile:
+       path: /etc/fail2ban/jail.local
+       regexp: '^port    = ssh'
+       line: 'port    = 5555'
+       state: present
+   - name: RESTART FAIL2BAN
+     service:
+       name: fail2ban
+       state: restarted
+   - name: INSTALL UFW
+     apt:
+       name: ufw
+       state: latest
+   - name: CONFIGURE UFW
+     command: '{{ item }}'
+     with_items:
+       - 'ufw allow from 167.71.246.137 to any port 5555'
+       - 'ufw allow 5000'
+   - name: REMOVE SSHD
+     file:
+       path: /etc/ssh/sshd_config
+       state: absent
+   - name: ADD SSHD
+     command: cp /tmp/setup/init/sshd_config /etc/ssh/sshd_config
+   - name: DELETE TMP
+     command: rm -r /tmp/setup
+   - name: DISABLE ROOT LOGIN
+     command: chsh -s /nologin root
+   - name: enable UFW
+     ufw: state=enabled
+   - name: RESTART SSH
+     service:
+       name: sshd
+       state: restarted
+
+...
