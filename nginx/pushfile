@@ -1,0 +1,3 @@
+http2_push /index.css;
+http2_push /largelard.jpg;
+http2_push /sealed.PNG;
