@@ -1,39 +1,14 @@
-const express = require("express");
 const bodyParser = require("body-parser");
+const transaction_api = require('./transaction-api.js');
+const unpack = require('./unpack-uri.js');
+const db = require('./db.js');
+const fs = require('fs');
+const express = require("express");
 const app = express();
-const knex = require("knex");
-
-const  BD01 =
-knex({
-    client: "mysql",
-    connection: {
-        host: "localhost",
-        user: "BD01",
-        password:"noKfD9gaaQjRCKhV2ufg",
-        database:"BusDev01"
-    }
-});
-const  BD02 =
-knex({
-    client: "mysql",
-    connection: {
-        host: "localhost",
-        user: "BD02",
-        password:"OVXFcHwPdzErYqQGm4uQ",
-        database:"BusDev02"
-    }
-});
-const  Open1 =
-knex({
-    client: "mysql",
-    connection: {
-        host: "localhost",
-        user: "Open1",
-        password:"3B84flSIj12uwjvuWuGZ",
-        database:"OpenEnroll1000"
-    }
-});
-
+const https = require('https');
+const privateKey = fs.readFileSync('./sslkey/example.key');
+const certificate = fs.readFileSync('./sslkey/example.crt');
+const credentials = {key:privateKey, cert:certificate};
 
 app
     .use((req,res,next) => {
@@ -47,18 +22,25 @@ app
     })
     .use(express.json())
     .use(express.static('public'))
+    .use(bodyParser.urlencoded({ extended: false }))
+    .use(bodyParser.json())
+    .use("/troveAPI",transaction_api)
+    .use("/unpack",unpack)
     .get("/1",(req,res)=>{
-        console.log('1');
-        const b = BD01.select().from('ACCOUNTS').then((data) => {res.send(data)});
+        res.send("Hey1-Check");
     })
     .get("/2",(req,res)=>{
         console.log('2');
-        const b = BD02.select().from('ACCOUNTS').then((data) => {res.send(data)});
+        const b = db.connect_functions['BD02'].select().from('ACCOUNTS').then((data) => {res.send(data)});
     })
     .get("/Open",(req,res)=>{
         console.log('OPEN');
-        const b = Open1.select().from('ACCOUNTS').then((data) => {res.send(data)});
+        const b = db.connect_functions['Open1'].select().from('ACCOUNTS').then((data) => {res.send(data)});
     })
-    .listen(5000);
+    
+
+
+var httpsServer = https.createServer(credentials,app);
+httpsServer.listen(8443);
 
 console.log('Server On');
