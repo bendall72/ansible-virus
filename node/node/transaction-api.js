@@ -60,7 +60,7 @@ console.log(banana);
                     db.connect_functions[db_knex_pack].beginTransaction((err) => {
                     if (err) { throw err;}
                     //QUERY1
-                    db.connect_functions[db_knex_pack].query("SELECT Address, COUNT FROM ACCOUNTS WHERE USES = 0 ORDER BY COUNT LIMIT 1 FOR UPDATE;", (err,result,fields) => {
+                    db.connect_functions[db_knex_pack].query("SELECT Address, COUNT FROM ACCOUNTS ORDER BY COUNT LIMIT 1 FOR UPDATE;", (err,result,fields) => {
                         if (err) { 
                             db.connect_functions[db_knex_pack].rollback(function() {
                               throw err;
