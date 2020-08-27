@@ -1,10 +1,7 @@
-const axios = require("axios");
 const express = require("express");
 let router = express.Router();
 const bodyParser = require("body-parser");
 const fees = require('./fees.js');
-const dotenv = require('dotenv');
-dotenv.config();
 const apiKEYS = require('./api_keys.json');
 const db = require('./db.js');
 const mysql = require('mysql');
@@ -13,9 +10,26 @@ const url = require('./web_creator.js');
 router
 .post('/:id',(req,res) => {
     const uri_ID = req.params.id;
-    console.log("Request Body: "+req.body);
-    const amt = req.body.TOTAL_AMOUNT;
+    const amt = Number(req.body.TOTAL_AMOUNT.toFixed(2));
+    console.log("AMOUNT:  "+amt);
     const client_key = req.body.TROVE_API_X_SECRET_CLIENT_KEY;
+    const cart_content = req.body.CONTENTS;
+    function ObjectLength( object ) {
+        var length = 0;
+        for( var key in object ) {
+            if( object.hasOwnProperty(key) ) {
+                ++length;
+            }
+        }
+        return length;
+    };
+
+    console.log(ObjectLength(cart_content));
+    if(cart_content){
+        console.log('Contents of Cart: '+cart_content);
+    }else{
+        console.log('No Contents of Cart');
+    }
 //Testing
 const banana = () =>{
     function inner(){
@@ -35,6 +49,7 @@ console.log(banana);
     if(apiKEYS[uri_ID]){
         if(apiKEYS[uri_ID][client_key] && amt){
             const db_knex_pack = apiKEYS[uri_ID][client_key];
+            const client_alias = apiKEYS[uri_ID]["alias"];
             
             console.log(db_knex_pack);
             console.log(db.connect_functions[db_knex_pack]);
@@ -82,6 +97,7 @@ console.log(banana);
 
             //FEE CALCULATOR    
             const feesPromise = new Promise((resolve,reject)=>{
+                console.log("Starting feesPromise with:"+amt);
                 const fees_deets = fees.feeDetermine(amt);
                 resolve(fees_deets);
             });
@@ -96,6 +112,11 @@ console.log(banana);
                     console.log("Hello: " + result);
                     const a = db_knex_pack;
                     const b = values;
+                    if(cart_content){
+                    b.push(cart_content);
+                    }
+                    b.push(client_alias);
+                    console.log(b);
                     const d = b[0][3];
                     const json = JSON.stringify(b);
                     console.log("HERE-J" + json);

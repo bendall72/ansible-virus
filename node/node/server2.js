@@ -5,10 +5,7 @@ const db = require('./db.js');
 const fs = require('fs');
 const express = require("express");
 const app = express();
-const https = require('https');
-const privateKey = fs.readFileSync('./sslkey/example.key');
-const certificate = fs.readFileSync('./sslkey/example.crt');
-const credentials = {key:privateKey, cert:certificate};
+
 
 app
     .use((req,res,next) => {
@@ -37,10 +34,7 @@ app
         console.log('OPEN');
         const b = db.connect_functions['Open1'].select().from('ACCOUNTS').then((data) => {res.send(data)});
     })
-    
+    .listen(4000);
 
-
-var httpsServer = https.createServer(credentials,app);
-httpsServer.listen(8443);
 
 console.log('Server On');
